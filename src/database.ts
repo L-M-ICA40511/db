@@ -46,7 +46,7 @@ export class Database {
 
   public changes: Subject<any> = new Subject();
 
-  private _idb;
+  private _idb: IDBFactory;
   private _schema: DBSchema;
 
   constructor(@Inject(DatabaseBackend) idbBackend: any, @Inject(IDB_SCHEMA) schema: DBSchema) {
