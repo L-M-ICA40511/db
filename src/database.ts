@@ -37,7 +37,7 @@ export interface DBSchema {
   stores: {[storename: string]: DBStore};
 }
 
-export function getIDBFactory(): IDBFactory {
+export function getIDBFactory() {
   return typeof window !== 'undefined' ? window.indexedDB : self.indexedDB;
 }
 
@@ -46,10 +46,10 @@ export class Database {
 
   public changes: Subject<any> = new Subject();
 
-  private _idb: IDBFactory;
+  private _idb;
   private _schema: DBSchema;
 
-  constructor(@Inject(DatabaseBackend) idbBackend: any, @Inject(IDB_SCHEMA) schema: any) {
+  constructor(@Inject(DatabaseBackend) idbBackend: any, @Inject(IDB_SCHEMA) schema: DBSchema) {
     this._schema = schema;
     this._idb = idbBackend;
   }
@@ -269,6 +269,38 @@ export class Database {
 
   compare(a: any, b: any): number {
     return this._idb.cmp(a, b);
+  }
+
+  clear(storeName: string) {
+    const open$ = this.open(this._schema.name);
+    return mergeMap.call(open$, (db: IDBDatabase) => {
+        return new Observable( (txnObserver: Observer<any>) => {
+         const recordSchema = this._schema.stores[storeName];
+         const mapper = this._mapRecord(recordSchema);
+         const txn = db.transaction([storeName], IDB_TXN_READWRITE);
+         const objectStore = txn.objectStore(storeName);
+
+         const clearRequest = objectStore.clear();
+
+         const onTxnError = (err: any) => txnObserver.error(err);
+         const onTxnComplete = () => txnObserver.complete();
+         const onClear = () => txnObserver.next(null);
+
+         txn.addEventListener(IDB_COMPLETE, onTxnComplete);
+         txn.addEventListener(IDB_ERROR, onTxnError);
+
+         clearRequest.addEventListener(IDB_SUCCESS, onClear);
+         clearRequest.addEventListener(IDB_ERROR, onTxnError);
+
+         return () => {
+           clearRequest.removeEventListener(IDB_SUCCESS, onClear);
+           clearRequest.removeEventListener(IDB_ERROR, onTxnError);
+           txn.removeEventListener(IDB_COMPLETE, onTxnComplete);
+           txn.removeEventListener(IDB_ERROR, onTxnError);
+         };
+
+        });
+      });
   }
 }
 
